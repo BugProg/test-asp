@@ -1,0 +1,77 @@
+name: MicroXRCEDDS ARM64 Build + Release (QEMU)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  build-arm64:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ------------------------------------------------------------
+      # Checkout repo (needed for release context)
+      # ------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------
+      # Enable ARM64 emulation (QEMU)
+      # ------------------------------------------------------------
+      - name: Set up QEMU
+        run: |
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+      # ------------------------------------------------------------
+      # Install host tools
+      # ------------------------------------------------------------
+      - name: Install tools
+        run: |
+          sudo apt update
+          sudo apt install -y git cmake build-essential
+
+      # ------------------------------------------------------------
+      # Clone Micro-XRCE-DDS-Agent
+      # ------------------------------------------------------------
+      - name: Clone Micro-XRCE-DDS-Agent
+        run: |
+          git clone https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+
+      # ------------------------------------------------------------
+      # Build ARM64 binary
+      # ------------------------------------------------------------
+      - name: Build ARM64 project
+        run: |
+          docker run --rm -t \
+            --platform linux/arm64 \
+            -v ${{ github.workspace }}:/workspace \
+            ubuntu:22.04 \
+            bash -c "
+              set -e
+              apt update &&
+              apt install -y cmake build-essential &&
+              cd /workspace/Micro-XRCE-DDS-Agent &&
+              mkdir -p build &&
+              cd build &&
+              cmake .. &&
+              make -j\$(nproc)
+            "
+
+      # ------------------------------------------------------------
+      # Make binary executable (important for release)
+      # ------------------------------------------------------------
+      - name: Prepare artifact
+        run: |
+          chmod +x Micro-XRCE-DDS-Agent/build/MicroXRCEAgent
+
+      # ------------------------------------------------------------
+      # Create GitHub Release + upload binary
+      # ------------------------------------------------------------
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Micro-XRCE-DDS-Agent/build/MicroXRCEAgent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
