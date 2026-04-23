@@ -1,4 +1,4 @@
-name: MicroXRCE ARM64 Build (Buildx)
+name: MicroXRCE ARM64 Clean Build
 
 on:
   push:
@@ -11,55 +11,57 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      # ------------------------------------------------------------
-      # Checkout repo
-      # ------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------
-      # Enable QEMU (for ARM emulation)
-      # ------------------------------------------------------------
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # ------------------------------------------------------------
-      # Enable Docker Buildx
-      # ------------------------------------------------------------
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
       # ------------------------------------------------------------
-      # Build ARM64 binary using Buildx
+      # Build everything from a fresh Docker image (no repo path issues)
       # ------------------------------------------------------------
-      - name: Build ARM64 MicroXRCEAgent
+      - name: Build ARM64 image
         run: |
           docker buildx build \
             --platform linux/arm64 \
-            -f Containers/hlc/Dockerfile \
-            -t microxrce-arm64 \
             --load \
-            .
+            -t microxrce-arm64 \
+            - <<'EOF'
+          FROM ubuntu:24.04
+
+          RUN apt update && apt install -y \
+              git \
+              cmake \
+              build-essential
+
+          RUN git clone https://github.com/eProsima/Micro-XRCE-DDS-Agent.git /src
+
+          WORKDIR /src
+          RUN mkdir -p build && cd build && \
+              cmake .. && \
+              make -j$(nproc)
+
+          EOF
 
       # ------------------------------------------------------------
-      # Extract binary from image
+      # Extract binary
       # ------------------------------------------------------------
       - name: Extract binary
         run: |
-          docker create --name temp microxrce-arm64
-          docker cp temp:/usr/local/bin/MicroXRCEAgent ./MicroXRCEAgent || true
-          docker rm temp
+          docker create --name tmp microxrce-arm64
+          docker cp tmp:/src/build/MicroXRCEAgent ./MicroXRCEAgent || true
+          docker rm tmp
 
-      # ------------------------------------------------------------
-      # Prepare artifact
-      # ------------------------------------------------------------
       - name: Make executable
         run: chmod +x MicroXRCEAgent
 
       # ------------------------------------------------------------
-      # Create GitHub Release
+      # Release
       # ------------------------------------------------------------
-      - name: Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: MicroXRCEAgent
