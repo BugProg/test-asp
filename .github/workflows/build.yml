@@ -51,7 +51,7 @@ jobs:
             bash -c "
               set -e
               apt update &&
-              apt install -y cmake build-essential &&
+              apt install -y cmake build-essential git &&
               cd /workspace/Micro-XRCE-DDS-Agent &&
               mkdir -p build &&
               cd build &&
