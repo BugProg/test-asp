@@ -1,4 +1,4 @@
-name: MicroXRCEDDS ARM64 Build + Release (QEMU)
+name: MicroXRCE ARM64 Build (Buildx)
 
 on:
   push:
@@ -12,66 +12,56 @@ jobs:
 
     steps:
       # ------------------------------------------------------------
-      # Checkout repo (needed for release context)
+      # Checkout repo
       # ------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
       # ------------------------------------------------------------
-      # Enable ARM64 emulation (QEMU)
+      # Enable QEMU (for ARM emulation)
       # ------------------------------------------------------------
       - name: Set up QEMU
-        run: |
-          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+        uses: docker/setup-qemu-action@v3
 
       # ------------------------------------------------------------
-      # Install host tools
+      # Enable Docker Buildx
       # ------------------------------------------------------------
-      - name: Install tools
-        run: |
-          sudo apt update
-          sudo apt install -y git cmake build-essential
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
       # ------------------------------------------------------------
-      # Clone Micro-XRCE-DDS-Agent
+      # Build ARM64 binary using Buildx
       # ------------------------------------------------------------
-      - name: Clone Micro-XRCE-DDS-Agent
+      - name: Build ARM64 MicroXRCEAgent
         run: |
-          git clone https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
-
-      # ------------------------------------------------------------
-      # Build ARM64 binary
-      # ------------------------------------------------------------
-      - name: Build ARM64 project
-        run: |
-          docker run --rm -t \
+          docker buildx build \
             --platform linux/arm64 \
-            -v ${{ github.workspace }}:/workspace \
-            ubuntu:22.04 \
-            bash -c "
-              set -e
-              apt update &&
-              apt install -y cmake build-essential git &&
-              cd /workspace/Micro-XRCE-DDS-Agent &&
-              mkdir -p build &&
-              cd build &&
-              cmake .. &&
-              make
-            "
+            -f Containers/hlc/Dockerfile \
+            -t microxrce-arm64 \
+            --load \
+            .
 
       # ------------------------------------------------------------
-      # Make binary executable (important for release)
+      # Extract binary from image
       # ------------------------------------------------------------
-      - name: Prepare artifact
+      - name: Extract binary
         run: |
-          chmod +x Micro-XRCE-DDS-Agent/build/MicroXRCEAgent
+          docker create --name temp microxrce-arm64
+          docker cp temp:/usr/local/bin/MicroXRCEAgent ./MicroXRCEAgent || true
+          docker rm temp
 
       # ------------------------------------------------------------
-      # Create GitHub Release + upload binary
+      # Prepare artifact
       # ------------------------------------------------------------
-      - name: Create Release
+      - name: Make executable
+        run: chmod +x MicroXRCEAgent
+
+      # ------------------------------------------------------------
+      # Create GitHub Release
+      # ------------------------------------------------------------
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: Micro-XRCE-DDS-Agent/build/MicroXRCEAgent
+          files: MicroXRCEAgent
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
